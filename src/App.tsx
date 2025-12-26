@@ -187,6 +187,10 @@ function AgentVisualizer() {
 
 // --- Main App Component ---
 
+// API Configuration - uses env var in production, localhost in dev
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+
 function App() {
     const [state, setState] = useState<AssistantState>('IDLE');
     const [isMicActive, setIsMicActive] = useState(false);
@@ -198,7 +202,7 @@ function App() {
     useEffect(() => {
         const checkUsage = async () => {
             try {
-                const res = await fetch('http://localhost:8000/api/usage/check');
+                const res = await fetch(`${API_URL}/api/usage/check`);
                 const data = await res.json();
                 if (data.limited) {
                     setIsLimitReached(true);
@@ -212,7 +216,7 @@ function App() {
 
     const handleUsageIncrement = useCallback(async () => {
         try {
-            const res = await fetch('http://localhost:8000/api/usage/increment', {
+            const res = await fetch(`${API_URL}/api/usage/increment`, {
                 method: 'POST'
             });
             const data = await res.json();
@@ -237,7 +241,7 @@ function App() {
     // WebSocket logic
     useEffect(() => {
         const connectWebSocket = () => {
-            ws.current = new WebSocket('ws://localhost:8000/ws');
+            ws.current = new WebSocket(`${WS_URL}/ws`);
             ws.current.onopen = () => console.log('Connected to Server (text)');
             ws.current.onmessage = (event) => console.log('WS msg:', event.data);
             ws.current.onclose = () => setTimeout(connectWebSocket, 3000);
@@ -262,7 +266,7 @@ function App() {
         } else {
             setIsConnecting(true);
             try {
-                const response = await fetch('http://localhost:8000/api/livekit-token', {
+                const response = await fetch(`${API_URL}/api/livekit-token`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
