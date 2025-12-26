@@ -1,0 +1,37 @@
+# Groq AI SDK
+groq>=0.4.0
+
+# Audio capture and processing
+pyaudio>=0.2.14
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Voice Activity Detection
+webrtcvad>=2.0.10
+
+# Audio playback with interrupt support
+pygame>=2.5.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Async support
+
+
+# Audio file handling
+pydub>=0.25.1
+soundfile>=0.12.1
+
+# NVIDIA Riva TTS (optional)
+nvidia-riva-client>=2.14.0
+
+# Tavily AI Web Search (optional)
+tavily-python>=0.5.0
+
+
+# Server dependencies
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.6.0
+python-multipart>=0.0.9
+websockets>=12.0

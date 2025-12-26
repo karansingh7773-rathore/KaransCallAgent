@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 24 24 27;
+    /* Zinc 900 #18181b */
+    --foreground: 250 250 250;
+    /* Zinc 50 #fafafa */
+
+    --card: 24 24 27;
+    --card-foreground: 250 250 250;
+
+    --popover: 24 24 27;
+    --popover-foreground: 250 250 250;
+
+    --primary: 154 52 18;
+    /* Orange 800 #9a3412 */
+    --primary-foreground: 250 250 250;
+
+    --secondary: 39 39 42;
+    /* Zinc 800 #27272a */
+    --secondary-foreground: 250 250 250;
+
+    --muted: 63 63 70;
+    /* Zinc 700 */
+    --muted-foreground: 161 161 170;
+    /* Zinc 400 */
+
+    --accent: 154 52 18;
+    --accent-foreground: 250 250 250;
+
+    --destructive: 239 68 68;
+    /* Red 500 */
+    --destructive-foreground: 250 250 250;
+
+    --border: 63 63 70;
+    --input: 63 63 70;
+    --ring: 154 52 18;
+  }
+
+  body {
+    @apply bg-zinc-900 text-zinc-50;
+    height: 100vh;
+    /* Force full viewport height */
+    overflow: hidden;
+    /* Prevent page-level scroll */
+    margin: 0;
+  }
+
+  html,
+  #root {
+    height: 100%;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Audio Wave Animation */
+@keyframes wave {
+
+  0%,
+  100% {
+    height: 10%;
+  }
+
+  50% {
+    height: 100%;
+  }
+}
+
+.animate-wave {
+  animation: wave 1s ease-in-out infinite;
+}
