@@ -38,6 +38,14 @@
     --border: 63 63 70;
     --input: 63 63 70;
     --ring: 154 52 18;
+
+    /* LiveKit BarVisualizer Theme */
+    --lk-control-bg: #18181b;
+    /* Zinc 900 */
+    --lk-fg: #f97316;
+    /* Orange 500 */
+    --lk-va-bg: #27272a;
+    /* Zinc 800 */
   }
 
   body {
@@ -88,4 +96,26 @@
 
 .animate-wave {
   animation: wave 1s ease-in-out infinite;
+}
+
+/* 
+   Manually implement LiveKit BarVisualizer styles 
+   since we don't have @livekit/components-styles 
+*/
+[data-lk-theme="default"] .lk-audio-bar,
+.lk-audio-bar {
+  background-color: var(--lk-va-bg);
+  border-radius: 6rem;
+  transition: height 0.1s ease-out, background-color 0.15s ease-out;
+  transform-origin: center;
+  flex: 1;
+  min-height: 20%;
+  opacity: 0.6;
+}
+
+[data-lk-theme="default"] .lk-audio-bar[aria-selected="true"],
+.lk-audio-bar[data-lk-highlighted="true"] {
+  background-color: var(--lk-fg);
+  opacity: 1;
+  box-shadow: 0 0 15px var(--lk-fg);
 }

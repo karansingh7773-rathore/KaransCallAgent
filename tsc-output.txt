@@ -1,0 +1,1 @@
+﻿src/App.tsx(3,10): error TS6133: 'RoomEvent' is declared but its value is never read.

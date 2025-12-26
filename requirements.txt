@@ -1,3 +1,10 @@
+# LiveKit Dependencies (Required for VoicePipelineAgent)
+livekit-agents>=0.8.0
+livekit-plugins-deepgram>=0.4.0
+livekit-plugins-groq>=0.2.0
+livekit-plugins-silero>=0.4.0
+livekit-server-sdk>=0.6.0
+
 # Groq AI SDK
 groq>=0.4.0
 
@@ -15,19 +22,12 @@ pygame>=2.5.0
 # Environment management
 python-dotenv>=1.0.0
 
-# Async support
-
-
 # Audio file handling
 pydub>=0.25.1
 soundfile>=0.12.1
 
 # NVIDIA Riva TTS (optional)
 nvidia-riva-client>=2.14.0
-
-# Tavily AI Web Search (optional)
-tavily-python>=0.5.0
-
 
 # Server dependencies
 fastapi>=0.109.0

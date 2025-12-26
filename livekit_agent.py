@@ -6,20 +6,27 @@ Features:
 - Deepgram STT (Speech-to-Text) - Ultra fast
 - Groq Llama LLM (Language Model)
 - Deepgram Aura TTS (Text-to-Speech) - Low latency
-- Dynamic voice switching via participant attributes
+- Dynamic instructions from frontend attributes
 
-Run with: python livekit_agent.py dev
+Run with: .\venv\Scripts\python.exe livekit_agent.py dev
 """
 
 import os
 import sys
+import logging
+import asyncio
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, cli, tts
-from livekit.agents.voice import AgentSession, Agent
+# Imports for livekit-agents 1.3.10
+from livekit.agents import AutoSubscribe, JobContext, JobProcess, WorkerOptions, cli, tts, llm
+from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import deepgram, groq, silero
+
+# Setup logging
+logger = logging.getLogger("voice-agent")
+logger.setLevel(logging.INFO)
 
 # Add modules to path for config
 sys.path.append('.')
@@ -31,92 +38,137 @@ except ImportError:
 
 
 # ============================================================
-# Available Deepgram Aura Voices
+# Robust Deepgram Voice Switcher
 # ============================================================
-
-DEEPGRAM_VOICES = {
-    # Aura-2 (Newest, recommended)
-    "arcas": "aura-2-arcas-en",       # Male, deep
-    "thalia": "aura-2-thalia-en",     # Female, warm
-    "andromeda": "aura-2-andromeda-en", # Female, clear
-    "orpheus": "aura-2-orpheus-en",   # Male, rich
-    "luna": "aura-2-luna-en",         # Female, soft
-    "atlas": "aura-2-atlas-en",       # Male, strong
-    "orion": "aura-2-orion-en",       # Male, neutral
-    "stella": "aura-2-stella-en",     # Female, bright
-    # Aura-1 (Legacy)
-    "asteria": "aura-asteria-en",     # Female
-    "perseus": "aura-perseus-en",     # Male
-    "hera": "aura-hera-en",           # Female
-    "zeus": "aura-zeus-en",           # Male
-}
 
 DEFAULT_VOICE = "arcas"
 
-
-# ============================================================
-# Switchable TTS - Supports dynamic voice switching
-# ============================================================
-
-class SwitchableTTS(tts.TTS):
-    """TTS wrapper that can switch Deepgram voices in real-time."""
-    
-    def __init__(self, initial_voice: str = DEFAULT_VOICE):
-        super().__init__(
-            capabilities=tts.TTSCapabilities(streaming=True),
-            sample_rate=24000,
-            num_channels=1,
-        )
-        
-        self.current_voice = initial_voice
-        self._update_tts()
-        print(f"[TTS] Deepgram Aura initialized with voice: {self.current_voice}")
-    
-    def _update_tts(self):
-        """Create Deepgram TTS with current voice."""
-        model = DEEPGRAM_VOICES.get(self.current_voice, DEEPGRAM_VOICES[DEFAULT_VOICE])
-        self._tts = deepgram.TTS(model=model)
-        print(f"[TTS] Using model: {model}")
-    
-    def update_voice(self, voice: str):
-        """Switch voice (called when frontend changes settings)."""
-        voice = voice.lower()
-        if voice in DEEPGRAM_VOICES:
-            self.current_voice = voice
-            self._update_tts()
-            print(f"[TTS] Switched voice to: {voice}")
-        else:
-            print(f"[TTS] Unknown voice: {voice}, keeping {self.current_voice}")
-    
-    def synthesize(self, text: str, *, conn_options=None) -> tts.ChunkedStream:
-        """Synthesize text with current voice."""
-        print(f"[TTS] Synthesizing with {self.current_voice}: '{text[:50]}...'")
-        return self._tts.synthesize(text)
-    
-    def stream(self, *, conn_options=None) -> tts.SynthesizeStream:
-        """Stream synthesis with current voice."""
-        return self._tts.stream()
-
-
-# ============================================================
-# Voice Agent
-# ============================================================
-
-class SentinelAgent(Agent):
-    """Voice agent using Deepgram STT/TTS and Groq LLM."""
+class DeepgramSwitcher(tts.TTS):
+    """Robust TTS wrapper that supports voice switching without crashes."""
     
     def __init__(self):
         super().__init__(
-            instructions=SYSTEM_PROMPT,
+            capabilities=tts.TTSCapabilities(streaming=True),
+            sample_rate=24000,
+            num_channels=1
         )
+        
+        logger.info("Initializing Deepgram voice...")
+        
+        self.voices = {
+            "arcas": deepgram.TTS(model="aura-2-arcas-en"),
+        }
+        
+        self.current_voice_id = DEFAULT_VOICE
+        logger.info(f"DeepgramSwitcher initialized with voice: {DEFAULT_VOICE}")
+    
+    def update_voice(self, voice_id: str):
+        clean_id = voice_id.lower().strip()
+        clean_id = clean_id.replace("aura-2-", "").replace("aura-", "").replace("-en", "")
+        
+        if clean_id in self.voices:
+            old_voice = self.current_voice_id
+            self.current_voice_id = clean_id
+            print(f"[TTS] Voice switched: {old_voice} -> {clean_id}")
+        else:
+            logger.warning(f"Unknown voice '{voice_id}'. Keeping {self.current_voice_id}")
+    
+    def synthesize(self, text: str, *, conn_options=None) -> tts.ChunkedStream:
+        try:
+            active_tts = self.voices[self.current_voice_id]
+            return active_tts.synthesize(text, conn_options=conn_options)
+        except Exception as e:
+            logger.error(f"TTS FAILED: {e}")
+            return self.voices[DEFAULT_VOICE].synthesize(text, conn_options=conn_options)
+    
+    def stream(self, *, conn_options=None) -> tts.SynthesizeStream:
+        try:
+            active_tts = self.voices[self.current_voice_id]
+            return active_tts.stream(conn_options=conn_options)
+        except Exception as e:
+            logger.error(f"TTS STREAM FAILED: {e}")
+            return self.voices[DEFAULT_VOICE].stream(conn_options=conn_options)
+
+
+# Default System Prompt (Apex Industries)
+DEFAULT_SYSTEM_PROMPT = """You are Nio, a Calling Agent at Apex Industries working for Karan, who is the CEO of the company.
+Apex Industries is a leader in Advanced Manufacturing with three main divisions:
+1. Apex Automation (Robotic arms)
+2. Apex Security (Surveillance)
+3. Apex Health (Medical devices)
+
+Your goal is to handle initial inquiries, screen potential B2B clients, and schedule appointments.
+Keep responses short, professional, and business-like."""
+
+# TTS Output Rules
+TTS_INSTRUCTIONS = """
+# Output Rules
+- Respond in plain text only. Never use JSON, markdown, lists, tables, code, emojis, or other complex formatting.
+- Keep replies brief by default: one to three sentences.
+- Spell out numbers, phone numbers, or email addresses.
+- Omit `https://` and other formatting if listing a web URL.
+"""
+
+
+# ============================================================
+# Custom Agent (inherits from Agent to use built-in update_instructions)
+# ============================================================
+
+class SentinelAgent(Agent):
+    """Voice agent that supports dynamic instruction updates."""
+    
+    def __init__(self, instructions: str):
+        super().__init__(instructions=instructions)
+        self._current_instructions = instructions
     
     async def on_enter(self) -> None:
         """Send greeting when session starts."""
         print("[Agent] Session started, sending greeting...")
-        await self.session.say(
-            "Hello! I'm your voice assistant. How can I help you today?",
-            allow_interruptions=True
-        )
+        
+        if "Apex Industries" in self._current_instructions:
+            greeting = "Hello! I am Nio, a Calling Agent at Apex Industries. How can I assist you today?"
+        else:
+            greeting = "Hello! How can I help you today?"
+            
+        await self.session.say(greeting, allow_interruptions=True)
+    
+    def set_new_instructions(self, new_instructions: str):
+        """Update instructions using the built-in Agent method."""
+        self._current_instructions = new_instructions
+        # Agent.update_instructions is ASYNC - must schedule it properly
+        asyncio.create_task(super().update_instructions(new_instructions))
+        print(f"[Agent] Instructions updated via Agent.update_instructions() - length: {len(new_instructions)}")
+
+
+# ============================================================
+# Helper Functions
+# ============================================================
+
+def get_instructions_from_attributes(attributes):
+    """Build instructions from frontend attributes."""
+    prompt = attributes.get("agent_prompt", "")
+    business = attributes.get("business_details", "")
+    
+    # If BOTH are empty, use the full default persona
+    if not prompt and not business:
+        return DEFAULT_SYSTEM_PROMPT + TTS_INSTRUCTIONS
+    
+    # Build a custom structured prompt
+    instructions_parts = []
+    
+    if prompt:
+        instructions_parts.append(f"# Identity\n{prompt}")
+    else:
+        instructions_parts.append("# Identity\nYou are a helpful voice assistant.")
+        
+    if business:
+        instructions_parts.append(f"# Business Context\n{business}")
+        
+    instructions_parts.append(TTS_INSTRUCTIONS)
+    
+    new_inst = "\n\n".join(instructions_parts)
+    print(f"[Agent] Custom instructions built from attributes (length: {len(new_inst)})")
+    return new_inst
 
 
 # ============================================================
@@ -133,55 +185,96 @@ async def entrypoint(ctx: JobContext):
     participant = await ctx.wait_for_participant()
     print(f"[Agent] Participant joined: {participant.identity}")
     
-    # Create switchable TTS with Deepgram voices
-    switchable_tts = SwitchableTTS(initial_voice=DEFAULT_VOICE)
+    # Create the voice switcher
+    voice_switcher = DeepgramSwitcher()
     
+    # Storage for received attributes
+    received_attributes = {}
+    attributes_received = asyncio.Event()
+    
+    # Register attribute change listener BEFORE waiting
+    @ctx.room.on("participant_attributes_changed")
+    def on_initial_attributes(changed_attributes: dict, p):
+        print(f"[Agent] Attribute change event: {list(changed_attributes.keys())}")
+        received_attributes.update(p.attributes)
+        if "agent_prompt" in changed_attributes or "business_details" in changed_attributes or "tts_voice" in changed_attributes:
+            attributes_received.set()
+    
+    # FAST TIMEOUT: Wait max 1 second for initial attributes
+    print("[Agent] Waiting for initial attributes (max 1s)...")
+    
+    # Check if attributes already exist
+    if participant.attributes and ("agent_prompt" in participant.attributes or "business_details" in participant.attributes):
+        received_attributes.update(participant.attributes)
+        print("[Agent] Attributes found immediately")
+    else:
+        # Wait for attribute event OR poll every 100ms (whichever is first)
+        try:
+            await asyncio.wait_for(attributes_received.wait(), timeout=1.0)
+            print("[Agent] Attributes received via event")
+        except asyncio.TimeoutError:
+            # Final check after timeout
+            if participant.attributes:
+                received_attributes.update(participant.attributes)
+                print("[Agent] Attributes found after timeout")
+            else:
+                print("[Agent] Timeout - no attributes, using defaults")
+    
+    # Ensure we have the latest
+    if participant.attributes:
+        received_attributes.update(participant.attributes)
+    
+    print(f"[Agent] Final Attributes: {received_attributes}")
+    
+    # Determine initial instructions
+    initial_instructions = DEFAULT_SYSTEM_PROMPT + TTS_INSTRUCTIONS
+    if received_attributes:
+        initial_instructions = get_instructions_from_attributes(received_attributes)
+        
+        initial_voice = received_attributes.get("tts_voice", DEFAULT_VOICE)
+        if initial_voice != DEFAULT_VOICE:
+            voice_switcher.update_voice(initial_voice)
+
     # Create agent session
     session = AgentSession(
         vad=silero.VAD.load(),
-        
-        # Deepgram for STT (ultra-fast Whisper)
         stt=deepgram.STT(),
-        
-        # Groq for LLM (fast Llama)
         llm=groq.LLM(
             model="llama-3.3-70b-versatile",
             temperature=0.7,
         ),
-        
-        # Deepgram for TTS (low-latency Aura)
-        tts=switchable_tts,
-        
+        tts=voice_switcher,
         allow_interruptions=True,
     )
     
-    # Listen for voice changes from frontend
+    # Create the agent
+    agent = SentinelAgent(instructions=initial_instructions)
+
+    # Runtime attribute handler - uses Agent's built-in update_instructions
     @ctx.room.on("participant_attributes_changed")
-    def on_attributes_changed(changed_attributes: dict, participant):
-        """Handle frontend voice switch."""
+    def on_runtime_attributes(changed_attributes: dict, p):
+        print(f"[Agent] Runtime attribute change: {list(changed_attributes.keys())}")
+        
         if "tts_voice" in changed_attributes:
-            new_voice = participant.attributes.get("tts_voice", DEFAULT_VOICE)
-            switchable_tts.update_voice(new_voice)
-            print(f"[Agent] Frontend requested voice switch to: {new_voice}")
+            new_voice = p.attributes.get("tts_voice", DEFAULT_VOICE)
+            voice_switcher.update_voice(new_voice)
+            
+        if "agent_prompt" in changed_attributes or "business_details" in changed_attributes:
+            new_instructions = get_instructions_from_attributes(p.attributes)
+            # Use our wrapper which calls Agent.update_instructions()
+            agent.set_new_instructions(new_instructions)
     
-    # Check initial attributes
-    if participant.attributes:
-        initial_voice = participant.attributes.get("tts_voice", DEFAULT_VOICE)
-        switchable_tts.update_voice(initial_voice)
-    
-    agent = SentinelAgent()
-    
+    # Start the session
     await session.start(
         agent=agent,
         room=ctx.room,
     )
     
-    print("[Agent] Session started, listening for speech...")
-    print(f"[Agent] Available voices: {list(DEEPGRAM_VOICES.keys())}")
+    print("[Agent] Session started, listening...")
 
 
 def prewarm(proc: JobProcess):
-    """Prewarm VAD model."""
+    """Prewarm VAD model for faster startup."""
     print("[Agent] Prewarming VAD...")
     proc.userdata["vad"] = silero.VAD.load()
     print("[Agent] Prewarm complete")
@@ -192,7 +285,6 @@ if __name__ == "__main__":
     print(f"[Agent] LiveKit URL: {os.getenv('LIVEKIT_URL', 'NOT SET')}")
     print(f"[Agent] Deepgram API Key: {'SET' if os.getenv('DEEPGRAM_API_KEY') else 'NOT SET'}")
     print(f"[Agent] Groq API Key: {'SET' if os.getenv('GROQ_API_KEY') else 'NOT SET'}")
-    print(f"[Agent] Available voices: {list(DEEPGRAM_VOICES.keys())}")
     
     cli.run_app(
         WorkerOptions(

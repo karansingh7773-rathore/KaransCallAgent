@@ -230,7 +230,7 @@ class TokenRequest(BaseModel):
 async def get_livekit_token(request: TokenRequest):
     """Generate a LiveKit room access token for the frontend."""
     try:
-        from livekit.api import AccessToken, VideoGrants
+        from livekit.api import AccessToken, VideoGrants, RoomConfiguration, RoomAgentDispatch
         
         livekit_url = os.getenv("LIVEKIT_URL", "")
         api_key = os.getenv("LIVEKIT_API_KEY", "")
@@ -239,19 +239,25 @@ async def get_livekit_token(request: TokenRequest):
         if not all([livekit_url, api_key, api_secret]):
             return {"error": "LiveKit not configured. Please set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in .env"}
         
-        # Create access token using builder pattern (v1.1+ API)
+        # Create access token with VIDEO grants
         grant = VideoGrants(
             room_join=True,
             room=request.room,
             can_publish=True,
             can_subscribe=True,
             can_publish_data=True,
+            can_update_own_metadata=True,  # Required for attribute updates
         )
+        
+        # Agent dispatch configuration - tells LiveKit to dispatch agent when participant joins
+        agent_dispatch = RoomAgentDispatch(agent_name="")  # Empty string = dispatch to any available agent
+        room_config = RoomConfiguration(agents=[agent_dispatch])
         
         token = AccessToken(api_key, api_secret) \
             .with_identity(request.identity) \
             .with_name(request.identity) \
-            .with_grants(grant)
+            .with_grants(grant) \
+            .with_room_config(room_config)
         
         jwt_token = token.to_jwt()
         
@@ -260,8 +266,8 @@ async def get_livekit_token(request: TokenRequest):
             "url": livekit_url,
             "room": request.room
         }
-    except ImportError:
-        return {"error": "LiveKit not installed. Run: pip install livekit"}
+    except ImportError as e:
+        return {"error": f"LiveKit import error: {e}. Run: pip install livekit-api"}
     except Exception as e:
         return {"error": f"Token generation failed: {str(e)}"}
 

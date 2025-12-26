@@ -1,16 +1,9 @@
 
 import { X, Mic2, User, Briefcase } from 'lucide-react';
 
-// Deepgram Aura voices
+// Deepgram Aura voices (currently only Arcas is working)
 export const DEEPGRAM_VOICES = [
     { id: 'arcas', name: 'Arcas (Male, Deep)' },
-    { id: 'thalia', name: 'Thalia (Female, Warm)' },
-    { id: 'andromeda', name: 'Andromeda (Female, Clear)' },
-    { id: 'orpheus', name: 'Orpheus (Male, Rich)' },
-    { id: 'luna', name: 'Luna (Female, Soft)' },
-    { id: 'atlas', name: 'Atlas (Male, Strong)' },
-    { id: 'orion', name: 'Orion (Male, Neutral)' },
-    { id: 'stella', name: 'Stella (Female, Bright)' },
 ];
 
 interface SettingsPanelProps {
@@ -26,10 +19,6 @@ interface SettingsPanelProps {
     onChangeAgentPrompt: (val: string) => void;
     businessDetails: string;
     onChangeBusinessDetails: (val: string) => void;
-
-    // Speech Settings
-    speechSpeed: number;
-    onChangeSpeed: (val: number) => void;
 }
 
 export function SettingsPanel({
@@ -41,8 +30,6 @@ export function SettingsPanel({
     onChangeAgentPrompt,
     businessDetails,
     onChangeBusinessDetails,
-    speechSpeed,
-    onChangeSpeed,
 }: SettingsPanelProps) {
     if (!isOpen) return null;
 
@@ -90,24 +77,6 @@ export function SettingsPanel({
                         </p>
                     </div>
 
-                    {/* Speech Speed */}
-                    <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">
-                                Speech Speed
-                            </label>
-                            <span className="text-xs text-orange-500 font-mono">{speechSpeed}x</span>
-                        </div>
-                        <input
-                            type="range"
-                            min="0.5"
-                            max="2.0"
-                            step="0.1"
-                            value={speechSpeed}
-                            onChange={(e) => onChangeSpeed(parseFloat(e.target.value))}
-                            className="w-full accent-orange-500 h-1.5 bg-zinc-800 rounded-full appearance-none cursor-pointer"
-                        />
-                    </div>
 
                     {/* Agent Persona Section */}
                     <div className="space-y-3 pt-2 border-t border-zinc-800">
