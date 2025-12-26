@@ -280,11 +280,46 @@ def prewarm(proc: JobProcess):
     print("[Agent] Prewarm complete")
 
 
+# ============================================================
+# Health Check Server for Render Deployment
+# ============================================================
+
+from aiohttp import web
+
+async def health_handler(request):
+    """Health check endpoint for Render."""
+    return web.Response(text="OK", status=200)
+
+async def start_health_server():
+    """Start a simple HTTP server for Render health checks."""
+    port = int(os.getenv("PORT", 8080))
+    app = web.Application()
+    app.router.add_get("/", health_handler)
+    app.router.add_get("/health", health_handler)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"[Agent] Health server running on port {port}")
+
+
 if __name__ == "__main__":
     print("[Agent] Starting Sentinel Connect Voice Agent...")
     print(f"[Agent] LiveKit URL: {os.getenv('LIVEKIT_URL', 'NOT SET')}")
     print(f"[Agent] Deepgram API Key: {'SET' if os.getenv('DEEPGRAM_API_KEY') else 'NOT SET'}")
     print(f"[Agent] Groq API Key: {'SET' if os.getenv('GROQ_API_KEY') else 'NOT SET'}")
+    
+    # Start health server in background for Render
+    import threading
+    def run_health_server():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(start_health_server())
+        loop.run_forever()
+    
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
     
     cli.run_app(
         WorkerOptions(
