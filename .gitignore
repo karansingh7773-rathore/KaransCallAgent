@@ -43,3 +43,6 @@ coverage/
 # Temp files
 *.tmp
 *.temp
+
+# Usage tracking data (IP-based)
+usage_data.json

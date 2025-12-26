@@ -8,6 +8,7 @@ import { ChatInput } from './components/ChatInput';
 import { ControlPanel } from './components/ControlPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StartupDialog } from './components/StartupDialog';
+import { LimitModal } from './components/LimitModal';
 import { Activity, Phone } from 'lucide-react';
 
 // --- Components inside LiveKitRoom ---
@@ -16,14 +17,35 @@ interface RoomHandlerProps {
     ttsVoice: string;
     agentPrompt: string;
     businessDetails: string;
+    onUsageIncrement: () => void;
 }
 
-// Handles Room logic: voice switching + prompt updates + audio rendering
-function RoomHandler({ ttsVoice, agentPrompt, businessDetails }: RoomHandlerProps) {
+// Handles Room logic: voice switching + prompt updates + usage tracking
+function RoomHandler({ ttsVoice, agentPrompt, businessDetails, onUsageIncrement }: RoomHandlerProps) {
     const room = useRoomContext();
+    const { agentTranscriptions } = useVoiceAssistant(); // Get transcripts
+
+    // Refs for diffing props
     const lastVoiceRef = useRef<string>(ttsVoice);
     const lastPromptRef = useRef<string>(agentPrompt);
     const lastBusinessRef = useRef<string>(businessDetails);
+
+    // Track processed segments to strictly count turns
+    const processedSegments = useRef<Set<string>>(new Set());
+
+    // USAGE TRACKING: Count Agent Responses
+    useEffect(() => {
+        if (!agentTranscriptions) return;
+
+        agentTranscriptions.forEach(seg => {
+            if (seg.final && !processedSegments.current.has(seg.id)) {
+                processedSegments.current.add(seg.id);
+                // Valid agent response -> increment usage
+                console.log('[Usage] Agent response detected, incrementing count');
+                onUsageIncrement();
+            }
+        });
+    }, [agentTranscriptions, onUsageIncrement]);
 
     // Initial Setup
     useEffect(() => {
@@ -44,7 +66,6 @@ function RoomHandler({ ttsVoice, agentPrompt, businessDetails }: RoomHandlerProp
         if (room.state === ConnectionState.Connected && ttsVoice !== lastVoiceRef.current) {
             room.localParticipant.setAttributes({ tts_voice: ttsVoice }).catch(console.error);
             lastVoiceRef.current = ttsVoice;
-            console.log('[LiveKit] Voice updated:', ttsVoice);
         }
     }, [ttsVoice, room.state]);
 
@@ -59,7 +80,6 @@ function RoomHandler({ ttsVoice, agentPrompt, businessDetails }: RoomHandlerProp
                 }).catch(console.error);
                 lastPromptRef.current = agentPrompt;
                 lastBusinessRef.current = businessDetails;
-                console.log('[LiveKit] Prompt/Business context updated');
             }
         }
     }, [agentPrompt, businessDetails, room.state]);
@@ -171,6 +191,42 @@ function App() {
     const [state, setState] = useState<AssistantState>('IDLE');
     const [isMicActive, setIsMicActive] = useState(false);
 
+    // Limit State (server-side)
+    const [isLimitReached, setIsLimitReached] = useState(false);
+
+    // Check usage limit on mount
+    useEffect(() => {
+        const checkUsage = async () => {
+            try {
+                const res = await fetch('http://localhost:8000/api/usage/check');
+                const data = await res.json();
+                if (data.limited) {
+                    setIsLimitReached(true);
+                }
+            } catch (err) {
+                console.error('[Usage] Failed to check usage:', err);
+            }
+        };
+        checkUsage();
+    }, []);
+
+    const handleUsageIncrement = useCallback(async () => {
+        try {
+            const res = await fetch('http://localhost:8000/api/usage/increment', {
+                method: 'POST'
+            });
+            const data = await res.json();
+            console.log(`[Usage] Count: ${data.count}/${data.limit}`);
+            if (data.limited) {
+                setIsLimitReached(true);
+                setLiveKitToken(null);
+                setLiveKitUrl(null);
+            }
+        } catch (err) {
+            console.error('[Usage] Failed to increment:', err);
+        }
+    }, []);
+
     // LiveKit connection info
     const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
     const [liveKitUrl, setLiveKitUrl] = useState<string | null>(null);
@@ -196,6 +252,8 @@ function App() {
 
     // LiveKit Voice Control
     const toggleMic = async () => {
+        if (isLimitReached) return; // Prevent connecting if limit reached
+
         if (liveKitToken) {
             setLiveKitToken(null);
             setLiveKitUrl(null);
@@ -213,6 +271,12 @@ function App() {
                     })
                 });
                 const data = await response.json();
+
+                // Handle limit_reached error from server
+                if (data.error === 'limit_reached') {
+                    setIsLimitReached(true);
+                    return;
+                }
                 if (data.error) throw new Error(data.error);
 
                 setLiveKitUrl(data.url);
@@ -227,6 +291,7 @@ function App() {
         }
     };
 
+    // ... (rest of existing callbacks) ...
     const handleConnected = useCallback(() => {
         setIsMicActive(true);
         setState('LISTENING');
@@ -238,6 +303,8 @@ function App() {
         setIsMicActive(false);
         setState('IDLE');
     }, []);
+
+    // ... (rest of existing state) ...
 
     // Deepgram voice state (persisted)
     const [ttsVoice, setTtsVoice] = useState(() => localStorage.getItem('tts_voice') || 'arcas');
@@ -251,7 +318,6 @@ function App() {
     useEffect(() => {
         localStorage.setItem('tts_voice', ttsVoice);
     }, [ttsVoice]);
-
 
     // Resizing State
     const [sidebarWidth, setSidebarWidth] = useState(600);
@@ -305,6 +371,7 @@ function App() {
                     isMicActive={isMicActive}
                     toggleMic={toggleMic}
                     state={state}
+                    disabled={isLimitReached}
                 />
             </div>
         </div>
@@ -347,6 +414,8 @@ function App() {
         <div className="flex flex-col h-full font-sans text-zinc-100 bg-zinc-950 relative z-20"
             style={{ cursor: isResizing ? 'col-resize' : 'default' }}>
             <StartupDialog />
+            {isLimitReached && <LimitModal />}
+
             <Header state={state} onSettingsClick={() => setShowSettings(true)} />
 
             <SettingsPanel
@@ -361,7 +430,7 @@ function App() {
             />
 
             <div className="flex-1 flex overflow-hidden relative bg-zinc-950">
-                {isLiveKitConnected ? (
+                {(isLiveKitConnected && !isLimitReached) ? (
                     <LiveKitRoom
                         token={liveKitToken!}
                         serverUrl={liveKitUrl!}
@@ -376,9 +445,13 @@ function App() {
                             ttsVoice={ttsVoice}
                             agentPrompt={agentPrompt}
                             businessDetails={businessDetails}
+                            onUsageIncrement={handleUsageIncrement}
                         />
+
                         {renderMainStage()}
+
                         {renderSidebar()}
+
                     </LiveKitRoom>
                 ) : (
                     <>

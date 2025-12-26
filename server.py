@@ -69,6 +69,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Usage Tracking (IP-based) ---
+
+USAGE_FILE = "usage_data.json"
+USAGE_LIMIT = 4  # Max agent responses per IP
+
+def load_usage_data() -> dict:
+    """Load usage data from JSON file."""
+    if os.path.exists(USAGE_FILE):
+        try:
+            with open(USAGE_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+def save_usage_data(data: dict):
+    """Save usage data to JSON file."""
+    try:
+        with open(USAGE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except IOError as e:
+        print(f"[Usage] Failed to save usage data: {e}")
+
+def get_usage_count(ip: str) -> int:
+    """Get current usage count for an IP."""
+    data = load_usage_data()
+    return data.get(ip, 0)
+
+def increment_usage(ip: str) -> int:
+    """Increment usage count for an IP, returns new count."""
+    data = load_usage_data()
+    current = data.get(ip, 0)
+    data[ip] = current + 1
+    save_usage_data(data)
+    print(f"[Usage] IP {ip}: {data[ip]}/{USAGE_LIMIT}")
+    return data[ip]
+
+def is_limit_reached(ip: str) -> bool:
+    """Check if IP has reached usage limit."""
+    return get_usage_count(ip) >= USAGE_LIMIT
+
 # --- Global Assistant Instance & Logic ---
 
 class ServerVoiceAssistant:
@@ -226,9 +267,18 @@ class TokenRequest(BaseModel):
     identity: str = "user"
     room: str = "voice-assistant"
 
+from fastapi import Request
+
 @app.post("/api/livekit-token")
-async def get_livekit_token(request: TokenRequest):
+async def get_livekit_token(request: TokenRequest, req: Request):
     """Generate a LiveKit room access token for the frontend."""
+    # Get client IP
+    client_ip = req.client.host if req.client else "unknown"
+    
+    # Check usage limit
+    if is_limit_reached(client_ip):
+        return {"error": "limit_reached", "message": "Demo limit reached. Contact Karan for more credits."}
+    
     try:
         from livekit.api import AccessToken, VideoGrants, RoomConfiguration, RoomAgentDispatch
         
@@ -270,6 +320,33 @@ async def get_livekit_token(request: TokenRequest):
         return {"error": f"LiveKit import error: {e}. Run: pip install livekit-api"}
     except Exception as e:
         return {"error": f"Token generation failed: {str(e)}"}
+
+# --- Usage Limit Endpoints ---
+
+@app.get("/api/usage/check")
+async def check_usage(req: Request):
+    """Check if the client IP has reached usage limit."""
+    client_ip = req.client.host if req.client else "unknown"
+    count = get_usage_count(client_ip)
+    limited = count >= USAGE_LIMIT
+    return {
+        "count": count,
+        "limit": USAGE_LIMIT,
+        "limited": limited
+    }
+
+@app.post("/api/usage/increment")
+async def increment_usage_endpoint(req: Request):
+    """Increment usage count for the client IP."""
+    client_ip = req.client.host if req.client else "unknown"
+    new_count = increment_usage(client_ip)
+    limited = new_count >= USAGE_LIMIT
+    return {
+        "count": new_count,
+        "limit": USAGE_LIMIT,
+        "limited": limited
+    }
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
