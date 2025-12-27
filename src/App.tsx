@@ -189,7 +189,7 @@ function AgentVisualizer() {
 
 // API Configuration - uses env var in production, localhost in dev
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+// WebSocket URL removed - LiveKit handles all real-time communication
 
 function App() {
     const [state, setState] = useState<AssistantState>('IDLE');
@@ -236,22 +236,10 @@ function App() {
     const [liveKitUrl, setLiveKitUrl] = useState<string | null>(null);
     const [isConnecting, setIsConnecting] = useState(false);
 
-    const ws = useRef<WebSocket | null>(null);
-
-    // WebSocket logic
-    useEffect(() => {
-        const connectWebSocket = () => {
-            ws.current = new WebSocket(`${WS_URL}/ws`);
-            ws.current.onopen = () => console.log('Connected to Server (text)');
-            ws.current.onmessage = (event) => console.log('WS msg:', event.data);
-            ws.current.onclose = () => setTimeout(connectWebSocket, 3000);
-        };
-        connectWebSocket();
-        return () => ws.current?.close();
-    }, []);
-
-    const sendMessage = (text: string) => {
-        ws.current?.send(JSON.stringify({ type: 'text', data: text }));
+    // sendMessage for text chat (placeholder - not currently used with LiveKit)
+    const sendMessage = (_text: string) => {
+        // Future: could use LiveKit data channels for text chat
+        console.log('[Chat] Text messaging not implemented with LiveKit');
     };
 
     // LiveKit Voice Control
