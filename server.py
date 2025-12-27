@@ -29,10 +29,9 @@ except ImportError:
     print("[CRITICAL] Failed to import config.py")
     sys.exit(1)
 
-# Critical Modules
+# Critical Modules (server-side only - no pyaudio)
 try:
     from modules import (
-        AudioInput,
         SpeechToText,
         LLMHandler, 
         InterruptHandler,
@@ -42,6 +41,13 @@ except ImportError as e:
     print(f"[CRITICAL] Failed to import core modules: {e}")
     # We can't run without these
     sys.exit(1)
+
+# Optional: AudioInput (requires pyaudio - not available on cloud servers)
+try:
+    from modules import AudioInput
+except ImportError:
+    print("[INFO] AudioInput not available (pyaudio not installed - OK for server)")
+    AudioInput = None
 
 # Optional Modules
 try:
