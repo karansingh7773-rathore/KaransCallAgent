@@ -71,7 +71,8 @@ export function useLiveKitConnection() {
             setState(prev => ({ ...prev, isConnecting: true, error: null }));
 
             // Get token from our server
-            const response = await fetch('http://localhost:8000/api/livekit-token', {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const response = await fetch(`${API_URL}/api/livekit-token`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
