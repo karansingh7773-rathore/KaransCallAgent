@@ -2,7 +2,12 @@
 Voice Assistant Modules
 """
 
-from .audio_input import AudioInput
+# Optional: AudioInput (requires pyaudio - not available on cloud servers)
+try:
+    from .audio_input import AudioInput
+except ImportError:
+    AudioInput = None
+
 from .speech_to_text import SpeechToText
 from .llm_handler import LLMHandler
 from .text_to_speech import TextToSpeech
